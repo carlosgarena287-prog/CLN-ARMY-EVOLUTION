@@ -30,7 +30,6 @@ jobs:
           echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
           echo "/usr/local/lib/android/sdk/platform-tools" >> "$GITHUB_PATH"
-          echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
 
       - name: Install Android packages
         shell: bash
@@ -46,7 +45,9 @@ jobs:
 
           echo "Usando: $SDKMANAGER"
 
+          set +o pipefail
           yes | "$SDKMANAGER" --licenses
+          set -o pipefail
 
           "$SDKMANAGER" --install \
             "platform-tools" \
@@ -59,14 +60,14 @@ jobs:
           set -euo pipefail
 
           VERSION="4.7.2"
-          URL="https://github.com/godotengine/godot/releases/download/${VERSION}-stable/Godot_v${VERSION}-stable_linux.x86_64.zip"
 
-          wget -q "$URL" -O godot.zip
+          wget -q \
+            "https://github.com/godotengine/godot/releases/download/${VERSION}-stable/Godot_v${VERSION}-stable_linux.x86_64.zip" \
+            -O godot.zip
+
           unzip -q godot.zip -d godot-bin
 
           chmod +x godot-bin/Godot_v${VERSION}-stable_linux.x86_64
-
-          echo "$PWD/godot-bin" >> "$GITHUB_PATH"
 
       - name: Download export templates
         shell: bash
@@ -74,9 +75,11 @@ jobs:
           set -euo pipefail
 
           VERSION="4.7.2"
-          URL="https://github.com/godotengine/godot/releases/download/${VERSION}-stable/Godot_v${VERSION}-stable_export_templates.tpz"
 
-          wget -q "$URL" -O templates.tpz
+          wget -q \
+            "https://github.com/godotengine/godot/releases/download/${VERSION}-stable/Godot_v${VERSION}-stable_export_templates.tpz" \
+            -O templates.tpz
+
           mkdir -p "$HOME/.local/share/godot/export_templates/${VERSION}.stable"
 
           unzip -q templates.tpz -d templates-unpacked
