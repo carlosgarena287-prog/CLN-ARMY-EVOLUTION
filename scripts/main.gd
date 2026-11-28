@@ -2,7 +2,7 @@
 extends Node3D
 
 const START_ARMY: int = 12
-const MAX_VISIBLE: int = 28
+const MAX_VISIBLE: int = 64
 const TRACK_LENGTH: float = 112.0
 const GATE_ZS: Array[float] = [-22.0, -48.0, -74.0]
 const ENEMY_Z: float = -126.0
@@ -471,11 +471,11 @@ func _create_soldier(
 		skin
 	)
 
-	var row: int = index / 6
-	var col: int = index % 6
+	var row: int = index / 8
+	var col: int = index % 8
 
 	unit.position = Vector3(
-		(float(col) - 2.5) * 0.72,
+		(float(col) - 3.5) * 0.72,
 		0.0,
 		float(row) * 0.78
 	)
@@ -534,15 +534,15 @@ func _set_squad_visibility(
 	var shown: int = mini(amount, MAX_VISIBLE)
 
 	for i in range(squad.size()):
-		var row: int = i / 6
-		var col: int = i % 6
+		var row: int = i / 8
+		var col: int = i % 8
 
 		var node: Node3D = squad[i]["node"]
 
 		node.visible = i < shown
 
 		node.position = Vector3(
-			(float(col) - 2.5) * 0.72,
+			(float(col) - 3.5) * 0.72,
 			0.0,
 			float(row) * 0.78
 		)
