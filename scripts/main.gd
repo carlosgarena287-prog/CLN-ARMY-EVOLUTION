@@ -1,12 +1,20 @@
-
 extends Node3D
 
 const START_ARMY: int = 12
-const MAX_VISIBLE: int = 64
+const MAX_VISIBLE: int = 80
 const TRACK_LENGTH: float = 112.0
 const GATE_ZS: Array[float] = [-22.0, -48.0, -74.0]
 const ENEMY_Z: float = -126.0
 const MAX_ARMY: int = 9999
+
+const COLS: int = 10
+const SPACING_X: float = 0.6
+const SPACING_Z: float = 0.62
+const BRIDGE_HALF: float = 5.2
+const GATE_X: float = 2.6
+const MAX_BULLETS: int = 48
+const CAM_HEIGHT: float = 8.4
+const CAM_BACK: float = 11.0
 
 var army_count: int = START_ARMY
 var enemy_count: int = 34
@@ -22,6 +30,7 @@ var gate_used: Array[bool] = [false, false, false]
 var run_clock: float = 0.0
 var battle_timer: float = 0.0
 var battle_tick_timer: float = 0.0
+var shoot_timer: float = 0.0
 
 var touch_down: bool = false
 var last_pointer_x: float = 0.0
@@ -31,10 +40,27 @@ var battle_start_enemy_z: float = 0.0
 
 var army_root: Node3D
 var enemy_root: Node3D
+var boss: Node3D
 var camera: Camera3D
+
+var army_label: Label3D
+var enemy_label: Label3D
 
 var soldiers: Array[Dictionary] = []
 var enemies: Array[Dictionary] = []
+var bullets: Array[Dictionary] = []
+
+var bullet_materials: Array[StandardMaterial3D] = []
+
+var lava_material: StandardMaterial3D
+var water_material: StandardMaterial3D
+
+var mat_blue: StandardMaterial3D
+var mat_blue_light: StandardMaterial3D
+var mat_red: StandardMaterial3D
+var mat_red_light: StandardMaterial3D
+var mat_skin: StandardMaterial3D
+var mat_dark: StandardMaterial3D
 
 var hud_level: Label
 var hud_count: Label
@@ -53,6 +79,9 @@ func _ready() -> void:
 	_build_track()
 	_build_gates()
 	_build_armies()
+	_build_boss()
+	_build_bullets()
+	_build_labels()
 	_build_hud()
 
 	_refresh_army()
@@ -63,11 +92,24 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	run_clock += delta
 
+	# Lava "respirando" e boss balançando
+	lava_material.emission_energy_multiplier = 1.4 + sin(run_clock * 2.0) * 0.3
+	boss.position.y = sin(run_clock * 3.0) * 0.12
+
 	match game_state:
 		"running":
 			_update_running(delta)
 		"battle":
 			_update_battle(delta)
+
+	if game_state == "running" or game_state == "battle":
+		shoot_timer -= delta
+		if shoot_timer <= 0.0:
+			shoot_timer = 0.07
+			_shoot()
+			_shoot()
+
+	_update_bullets(delta)
 
 
 func _update_running(delta: float) -> void:
@@ -85,16 +127,7 @@ func _update_running(delta: float) -> void:
 		-progress
 	)
 
-	camera.position = Vector3(
-		player_x * 0.28,
-		10.5,
-		-progress + 13.5
-	)
-
-	camera.look_at(
-		Vector3(player_x * 0.18, 0.0, -progress - 13.0),
-		Vector3.UP
-	)
+	_place_camera()
 
 	_animate_squad(soldiers, run_clock, 1.0)
 
@@ -104,6 +137,19 @@ func _update_running(delta: float) -> void:
 
 	if progress >= TRACK_LENGTH:
 		_start_battle()
+
+
+func _place_camera() -> void:
+	camera.position = Vector3(
+		player_x * 0.28,
+		CAM_HEIGHT,
+		-progress + CAM_BACK
+	)
+
+	camera.look_at(
+		Vector3(player_x * 0.18, 0.8, -progress - 14.0),
+		Vector3.UP
+	)
 
 
 func _input(event: InputEvent) -> void:
@@ -130,8 +176,8 @@ func _input(event: InputEvent) -> void:
 func _move_player(delta_x: float) -> void:
 	target_x = clampf(
 		target_x + delta_x / 720.0 * 13.0,
-		-4.7,
-		4.7
+		-4.2,
+		4.2
 	)
 
 
@@ -144,35 +190,39 @@ func _build_world() -> void:
 	var sky := Sky.new()
 	var sky_material := ProceduralSkyMaterial.new()
 
-	sky_material.sky_top_color = Color(0.055, 0.12, 0.24)
-	sky_material.sky_horizon_color = Color(0.32, 0.48, 0.62)
-	sky_material.ground_bottom_color = Color(0.055, 0.075, 0.09)
-	sky_material.ground_horizon_color = Color(0.22, 0.29, 0.32)
+	sky_material.sky_top_color = Color(0.20, 0.10, 0.24)
+	sky_material.sky_horizon_color = Color(1.0, 0.55, 0.25)
+	sky_material.ground_bottom_color = Color(0.45, 0.14, 0.05)
+	sky_material.ground_horizon_color = Color(1.0, 0.5, 0.2)
 
 	sky.sky_material = sky_material
 	env.sky = sky
 
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.62, 0.72, 0.9)
-	env.ambient_light_energy = 0.75
+	env.ambient_light_color = Color(0.9, 0.82, 0.88)
+	env.ambient_light_energy = 0.9
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+
+	env.fog_enabled = true
+	env.fog_light_color = Color(1.0, 0.55, 0.3)
+	env.fog_density = 0.004
 
 	world.environment = env
 	add_child(world)
 
 	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-48.0, -25.0, 0.0)
-	sun.light_energy = 1.35
+	sun.rotation_degrees = Vector3(-50.0, -25.0, 0.0)
+	sun.light_energy = 1.25
+	sun.light_color = Color(1.0, 0.93, 0.82)
 	sun.shadow_enabled = true
 	add_child(sun)
 
 	camera = Camera3D.new()
-	camera.position = Vector3(0.0, 10.5, 13.5)
-	camera.fov = 62.0
+	camera.fov = 60.0
 	camera.current = true
 	add_child(camera)
 
-	camera.look_at(Vector3(0.0, 0.0, -13.0), Vector3.UP)
+	_place_camera()
 
 
 func _mat(
@@ -205,7 +255,29 @@ func _mesh_box(
 	return node
 
 
-func _mesh_cylinder(
+func _mesh_sphere(
+	parent: Node3D,
+	radius: float,
+	pos: Vector3,
+	material: Material
+) -> MeshInstance3D:
+	var node := MeshInstance3D.new()
+	var mesh := SphereMesh.new()
+
+	mesh.radius = radius
+	mesh.height = radius * 2.0
+	mesh.radial_segments = 16
+	mesh.rings = 8
+
+	node.mesh = mesh
+	node.position = pos
+	node.material_override = material
+
+	parent.add_child(node)
+	return node
+
+
+func _mesh_capsule(
 	parent: Node3D,
 	radius: float,
 	height: float,
@@ -213,12 +285,11 @@ func _mesh_cylinder(
 	material: Material
 ) -> MeshInstance3D:
 	var node := MeshInstance3D.new()
-	var mesh := CylinderMesh.new()
+	var mesh := CapsuleMesh.new()
 
-	mesh.top_radius = radius
-	mesh.bottom_radius = radius
+	mesh.radius = radius
 	mesh.height = height
-	mesh.radial_segments = 12
+	mesh.radial_segments = 16
 
 	node.mesh = mesh
 	node.position = pos
@@ -229,88 +300,97 @@ func _mesh_cylinder(
 
 
 func _build_track() -> void:
-	var asphalt := _mat(Color(0.105, 0.145, 0.19), 0.12, 0.88)
-	var edge := _mat(Color(0.95, 0.72, 0.22), 0.25, 0.45)
-	var stripe := _mat(Color(0.78, 0.86, 0.92))
-	var grass := _mat(Color(0.12, 0.25, 0.19))
+	var stone := _mat(Color(0.66, 0.67, 0.70), 0.0, 0.85)
+	var seam := _mat(Color(0.46, 0.47, 0.52), 0.0, 0.9)
+	var rail := _mat(Color(0.38, 0.40, 0.46), 0.3, 0.5)
+	var rail_top := _mat(Color(0.82, 0.84, 0.88), 0.2, 0.4)
+
+	lava_material = _mat(Color(1.0, 0.38, 0.05), 0.0, 0.6)
+	lava_material.emission_enabled = true
+	lava_material.emission = Color(1.0, 0.35, 0.04)
+	lava_material.emission_energy_multiplier = 1.4
+
+	water_material = _mat(Color(0.10, 0.50, 0.95), 0.0, 0.2)
+	water_material.emission_enabled = true
+	water_material.emission = Color(0.10, 0.40, 0.90)
+	water_material.emission_energy_multiplier = 0.6
+
+	var length: float = TRACK_LENGTH + 45.0
+	var center_z: float = -TRACK_LENGTH * 0.48
+
+	# Ponte de pedra
+	_mesh_box(
+		self,
+		Vector3(BRIDGE_HALF * 2.0, 0.6, length),
+		Vector3(0.0, -0.3, center_z),
+		stone
+	)
+
+	# Lava à esquerda, água à direita
+	_mesh_box(
+		self,
+		Vector3(60.0, 0.3, length + 40.0),
+		Vector3(-(BRIDGE_HALF + 30.0), -1.2, center_z),
+		lava_material
+	)
 
 	_mesh_box(
 		self,
-		Vector3(13.0, 0.42, TRACK_LENGTH + 45.0),
-		Vector3(0.0, -0.38, -TRACK_LENGTH * 0.48),
-		asphalt
+		Vector3(60.0, 0.3, length + 40.0),
+		Vector3(BRIDGE_HALF + 30.0, -1.2, center_z),
+		water_material
 	)
 
+	# Emendas das lajes
+	for i in range(30):
+		_mesh_box(
+			self,
+			Vector3(BRIDGE_HALF * 2.0, 0.02, 0.1),
+			Vector3(0.0, 0.012, 10.0 - float(i) * 5.5),
+			seam
+		)
+
+	# Guarda-corpos e postes
 	for side in [-1.0, 1.0]:
+		var rail_x: float = side * (BRIDGE_HALF + 0.15)
+
 		_mesh_box(
 			self,
-			Vector3(0.16, 0.045, TRACK_LENGTH + 40.0),
-			Vector3(side * 6.2, -0.15, -TRACK_LENGTH * 0.48),
-			edge
+			Vector3(0.3, 0.5, length),
+			Vector3(rail_x, 0.25, center_z),
+			rail
 		)
 
 		_mesh_box(
 			self,
-			Vector3(7.0, 0.25, TRACK_LENGTH + 45.0),
-			Vector3(side * 10.0, -0.52, -TRACK_LENGTH * 0.48),
-			grass
+			Vector3(0.42, 0.08, length),
+			Vector3(rail_x, 0.54, center_z),
+			rail_top
 		)
 
-	for i in range(26):
-		_mesh_box(
-			self,
-			Vector3(0.12, 0.035, 2.2),
-			Vector3(0.0, -0.145, -float(i) * 4.3 - 2.0),
-			stripe
-		)
-
-	for side in [-1.0, 1.0]:
-		for i in range(15):
-			var tree := Node3D.new()
-
-			tree.position = Vector3(
-				side * (7.8 + float(i % 3) * 0.45),
-				0.0,
-				-float(i) * 7.2 - 5.0
+		for i in range(36):
+			_mesh_box(
+				self,
+				Vector3(0.36, 0.9, 0.36),
+				Vector3(rail_x, 0.45, 8.0 - float(i) * 4.0),
+				rail_top
 			)
-
-			add_child(tree)
-
-			_mesh_cylinder(
-				tree,
-				0.12,
-				1.2,
-				Vector3(0.0, 0.6, 0.0),
-				_mat(Color(0.24, 0.16, 0.11))
-			)
-
-			var crown := MeshInstance3D.new()
-			var sphere := SphereMesh.new()
-
-			sphere.radius = 0.62
-			sphere.height = 1.35
-
-			crown.mesh = sphere
-			crown.position = Vector3(0.0, 1.55, 0.0)
-			crown.material_override = _mat(Color(0.12, 0.34, 0.24))
-
-			tree.add_child(crown)
 
 
 func _build_gates() -> void:
 	for i in range(GATE_ZS.size()):
 		_make_gate(
-			-3.0,
+			-GATE_X,
 			GATE_ZS[i],
 			"+10",
 			Color(0.05, 0.43, 1.0)
 		)
 
 		_make_gate(
-			3.0,
+			GATE_X,
 			GATE_ZS[i],
 			"×2",
-			Color(0.0, 0.78, 0.48)
+			Color(0.0, 0.78, 0.75)
 		)
 
 
@@ -325,55 +405,70 @@ func _make_gate(
 	add_child(gate)
 
 	var glow := _mat(
-		Color(tint.r, tint.g, tint.b, 0.22),
-		0.15,
+		Color(tint.r, tint.g, tint.b, 0.28),
+		0.1,
 		0.25
 	)
 
 	glow.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	glow.emission_enabled = true
+	glow.emission = tint
+	glow.emission_energy_multiplier = 0.5
 
 	_mesh_box(
 		gate,
-		Vector3(4.8, 2.8, 0.22),
+		Vector3(4.2, 2.8, 0.2),
 		Vector3.ZERO,
 		glow
 	)
 
-	var frame_material := _mat(tint, 0.35, 0.28)
+	var frame_material := _mat(tint, 0.2, 0.3)
+	frame_material.emission_enabled = true
+	frame_material.emission = tint
+	frame_material.emission_energy_multiplier = 0.9
 
 	_mesh_box(
 		gate,
 		Vector3(0.18, 3.0, 0.3),
-		Vector3(-2.42, 0.0, 0.0),
+		Vector3(-2.1, 0.0, 0.0),
 		frame_material
 	)
 
 	_mesh_box(
 		gate,
 		Vector3(0.18, 3.0, 0.3),
-		Vector3(2.42, 0.0, 0.0),
+		Vector3(2.1, 0.0, 0.0),
 		frame_material
 	)
 
 	_mesh_box(
 		gate,
-		Vector3(4.95, 0.18, 0.3),
+		Vector3(4.35, 0.18, 0.3),
 		Vector3(0.0, 1.48, 0.0),
 		frame_material
 	)
 
 	var label := Label3D.new()
 	label.text = caption
-	label.font_size = 104
+	label.font_size = 120
 	label.pixel_size = 0.009
 	label.position = Vector3(0.0, 0.0, -0.19)
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.modulate = Color.WHITE
+	label.outline_size = 18
+	label.outline_modulate = Color(0.0, 0.1, 0.25)
 
 	gate.add_child(label)
 
 
 func _build_armies() -> void:
+	mat_blue = _mat(Color(0.10, 0.36, 0.95), 0.0, 0.45)
+	mat_blue_light = _mat(Color(0.35, 0.75, 1.0), 0.0, 0.35)
+	mat_red = _mat(Color(0.80, 0.12, 0.10), 0.0, 0.45)
+	mat_red_light = _mat(Color(1.0, 0.45, 0.20), 0.0, 0.35)
+	mat_skin = _mat(Color(1.0, 0.80, 0.65), 0.0, 0.6)
+	mat_dark = _mat(Color(0.10, 0.12, 0.18), 0.0, 0.65)
+
 	army_root = Node3D.new()
 	add_child(army_root)
 
@@ -394,120 +489,52 @@ func _create_soldier(
 	var unit := Node3D.new()
 	parent.add_child(unit)
 
-	var blue := _mat(Color(0.035, 0.24, 0.78), 0.18, 0.48)
-	var blue_light := _mat(Color(0.08, 0.48, 1.0), 0.25, 0.38)
+	var uniform: Material = mat_red if enemy else mat_blue
+	var armor: Material = mat_red_light if enemy else mat_blue_light
 
-	var red := _mat(Color(0.62, 0.055, 0.075), 0.15, 0.5)
-	var red_light := _mat(Color(0.95, 0.16, 0.12), 0.18, 0.42)
-
-	var uniform: Material = red if enemy else blue
-	var armor: Material = red_light if enemy else blue_light
-
-	var skin := _mat(Color(0.72, 0.49, 0.34))
-	var dark := _mat(Color(0.055, 0.07, 0.09), 0.1, 0.65)
-
-	var torso := MeshInstance3D.new()
-	var torso_mesh := CapsuleMesh.new()
-
-	torso_mesh.radius = 0.22
-	torso_mesh.height = 0.72
-	torso_mesh.radial_segments = 12
-
-	torso.mesh = torso_mesh
-	torso.position.y = 0.98
-	torso.material_override = uniform
-
-	unit.add_child(torso)
-
-	var vest := MeshInstance3D.new()
-	var vest_mesh := BoxMesh.new()
-
-	vest_mesh.size = Vector3(0.39, 0.42, 0.27)
-	vest.mesh = vest_mesh
-	vest.position = Vector3(0.0, 1.0, -0.035)
-	vest.material_override = armor
-
-	unit.add_child(vest)
-
-	var head := MeshInstance3D.new()
-	var head_mesh := SphereMesh.new()
-
-	head_mesh.radius = 0.17
-	head_mesh.height = 0.34
-
-	head.mesh = head_mesh
-	head.position.y = 1.48
-	head.material_override = skin
-
-	unit.add_child(head)
-
-	var helmet := MeshInstance3D.new()
-	var helmet_mesh := SphereMesh.new()
-
-	helmet_mesh.radius = 0.19
-	helmet_mesh.height = 0.22
-
-	helmet.mesh = helmet_mesh
-	helmet.position = Vector3(0.0, 1.62, 0.0)
-	helmet.material_override = armor
-
-	unit.add_child(helmet)
+	# Corpo e cabeça maiores, estilo "fofinho"
+	_mesh_capsule(unit, 0.30, 0.85, Vector3(0.0, 0.80, 0.0), uniform)
+	_mesh_box(unit, Vector3(0.46, 0.30, 0.10), Vector3(0.0, 0.88, -0.26), armor)
+	_mesh_sphere(unit, 0.26, Vector3(0.0, 1.35, 0.0), mat_skin)
+	_mesh_sphere(unit, 0.29, Vector3(0.0, 1.47, 0.0), armor)
+	_mesh_box(unit, Vector3(0.32, 0.04, 0.18), Vector3(0.0, 1.36, -0.28), armor)
 
 	var left_arm := _make_limb(
 		unit,
-		Vector3(-0.27, 1.22, 0.0),
+		Vector3(-0.38, 1.05, 0.0),
 		uniform,
-		0.075,
-		0.48
+		0.09,
+		0.50
 	)
 
 	var right_arm := _make_limb(
 		unit,
-		Vector3(0.27, 1.22, 0.0),
+		Vector3(0.38, 1.05, 0.0),
 		uniform,
-		0.075,
-		0.48
+		0.09,
+		0.50
 	)
 
 	var left_leg := _make_limb(
 		unit,
-		Vector3(-0.12, 0.62, 0.0),
-		dark,
-		0.09,
-		0.58
+		Vector3(-0.13, 0.50, 0.0),
+		mat_dark,
+		0.11,
+		0.50
 	)
 
 	var right_leg := _make_limb(
 		unit,
-		Vector3(0.12, 0.62, 0.0),
-		dark,
-		0.09,
-		0.58
+		Vector3(0.13, 0.50, 0.0),
+		mat_dark,
+		0.11,
+		0.50
 	)
 
-	_mesh_box(
-		unit,
-		Vector3(0.38, 0.09, 0.29),
-		Vector3(0.0, 0.72, 0.0),
-		dark
-	)
+	if enemy:
+		unit.rotation.y = PI
 
-	_mesh_box(
-		unit,
-		Vector3(0.10, 0.12, 0.025),
-		Vector3(0.0, 1.12, -0.17),
-		skin
-	)
-
-	var row: int = index / 8
-	var col: int = index % 8
-
-	unit.position = Vector3(
-		(float(col) - 3.5) * 0.72,
-		0.0,
-		float(row) * 0.78
-	)
-
+	unit.position = _slot(index, enemy)
 	unit.visible = false
 
 	return {
@@ -518,6 +545,25 @@ func _create_soldier(
 		"rl": right_leg,
 		"phase": float(index) * 0.55
 	}
+
+
+func _slot(i: int, enemy: bool) -> Vector3:
+	var row: int = i / COLS
+	var col: int = i % COLS
+
+	var jitter_x: float = sin(float(i) * 12.9898) * 0.07
+	var jitter_z: float = cos(float(i) * 7.233) * 0.07
+
+	var z: float = float(row) * SPACING_Z
+
+	if enemy:
+		z = -z
+
+	return Vector3(
+		(float(col) - float(COLS - 1) * 0.5) * SPACING_X + jitter_x,
+		0.0,
+		z + jitter_z
+	)
 
 
 func _make_limb(
@@ -547,33 +593,171 @@ func _make_limb(
 	return pivot
 
 
+func _build_boss() -> void:
+	boss = Node3D.new()
+	boss.position = Vector3(0.0, 0.0, -6.5)
+	enemy_root.add_child(boss)
+
+	var body_mat := _mat(Color(0.85, 0.20, 0.12), 0.0, 0.5)
+	var skin_mat := _mat(Color(1.0, 0.55, 0.20), 0.0, 0.5)
+	var dark_mat := _mat(Color(0.25, 0.08, 0.06), 0.0, 0.7)
+
+	_mesh_capsule(boss, 1.3, 3.8, Vector3(0.0, 2.4, 0.0), body_mat)
+	_mesh_sphere(boss, 0.95, Vector3(0.0, 4.9, 0.0), skin_mat)
+	_mesh_box(boss, Vector3(1.3, 0.18, 0.2), Vector3(0.0, 5.1, 0.85), dark_mat)
+
+	for side in [-1.0, 1.0]:
+		_mesh_sphere(boss, 0.8, Vector3(side * 1.5, 3.7, 0.0), body_mat)
+		_mesh_sphere(boss, 0.7, Vector3(side * 1.95, 2.2, 0.35), skin_mat)
+		_mesh_sphere(boss, 0.18, Vector3(side * 0.35, 5.0, 0.95), _white_mat())
+
+
+func _white_mat() -> StandardMaterial3D:
+	return _mat(Color(1.0, 1.0, 1.0), 0.0, 0.4)
+
+
+func _build_bullets() -> void:
+	var colors: Array[Color] = [
+		Color(1.0, 0.90, 0.20),
+		Color(1.0, 0.35, 0.80)
+	]
+
+	for c in colors:
+		var m := StandardMaterial3D.new()
+		m.albedo_color = c
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		bullet_materials.append(m)
+
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.09, 0.09, 0.8)
+
+	for i in range(MAX_BULLETS):
+		var node := MeshInstance3D.new()
+		node.mesh = mesh
+		node.material_override = bullet_materials[i % 2]
+		node.visible = false
+		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(node)
+
+		bullets.append({
+			"node": node,
+			"life": 0.0
+		})
+
+
+func _shoot() -> void:
+	var shown: int = mini(army_count, MAX_VISIBLE)
+
+	if shown <= 0:
+		return
+
+	for b in bullets:
+		var life: float = b["life"]
+
+		if life > 0.0:
+			continue
+
+		var src: Dictionary = soldiers[randi() % shown]
+		var unit: Node3D = src["node"]
+		var node: MeshInstance3D = b["node"]
+
+		node.position = army_root.position + unit.position + Vector3(0.0, 1.1, -0.5)
+		node.visible = true
+		b["life"] = 1.1
+		return
+
+
+func _update_bullets(delta: float) -> void:
+	for b in bullets:
+		var life: float = b["life"]
+
+		if life <= 0.0:
+			continue
+
+		life -= delta
+		b["life"] = life
+
+		var node: MeshInstance3D = b["node"]
+		node.position.z -= 48.0 * delta
+
+		if life <= 0.0:
+			node.visible = false
+
+
+func _build_labels() -> void:
+	army_label = Label3D.new()
+	army_label.font_size = 180
+	army_label.pixel_size = 0.011
+	army_label.position = Vector3(0.0, 3.0, 1.2)
+	army_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	army_label.no_depth_test = true
+	army_label.modulate = Color(0.55, 0.88, 1.0)
+	army_label.outline_size = 30
+	army_label.outline_modulate = Color(0.02, 0.08, 0.2)
+	army_root.add_child(army_label)
+
+	enemy_label = Label3D.new()
+	enemy_label.font_size = 200
+	enemy_label.pixel_size = 0.012
+	enemy_label.position = Vector3(0.0, 7.2, -6.5)
+	enemy_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	enemy_label.no_depth_test = true
+	enemy_label.modulate = Color(1.0, 0.62, 0.12)
+	enemy_label.outline_size = 32
+	enemy_label.outline_modulate = Color(0.2, 0.03, 0.0)
+	enemy_root.add_child(enemy_label)
+
+
+func _spawn_pop(
+	pos: Vector3,
+	text: String,
+	color: Color,
+	size: int = 140
+) -> void:
+	var label := Label3D.new()
+	label.text = text
+	label.font_size = size
+	label.pixel_size = 0.012
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.no_depth_test = true
+	label.modulate = color
+	label.outline_size = 28
+	label.outline_modulate = Color(0.05, 0.05, 0.10)
+	label.position = pos
+	add_child(label)
+
+	var tween := label.create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(label, "position:y", pos.y + 3.0, 0.9)
+	tween.tween_property(label, "modulate:a", 0.0, 0.6).set_delay(0.3)
+	tween.chain().tween_callback(label.queue_free)
+
+
 func _refresh_army() -> void:
-	_set_squad_visibility(soldiers, army_count)
+	_set_squad_visibility(soldiers, army_count, false)
 
 
 func _refresh_enemy() -> void:
-	_set_squad_visibility(enemies, enemy_count)
+	_set_squad_visibility(enemies, enemy_count, true)
+
+	boss.visible = enemy_count > 0
+
+	var boss_scale: float = minf(1.0 + float(level - 1) * 0.08, 1.8)
+	boss.scale = Vector3(boss_scale, boss_scale, boss_scale)
 
 
 func _set_squad_visibility(
 	squad: Array[Dictionary],
-	amount: int
+	amount: int,
+	enemy: bool
 ) -> void:
 	var shown: int = mini(amount, MAX_VISIBLE)
 
 	for i in range(squad.size()):
-		var row: int = i / 8
-		var col: int = i % 8
-
 		var node: Node3D = squad[i]["node"]
 
 		node.visible = i < shown
-
-		node.position = Vector3(
-			(float(col) - 3.5) * 0.72,
-			0.0,
-			float(row) * 0.78
-		)
+		node.position = _slot(i, enemy)
 
 
 func _animate_squad(
@@ -611,9 +795,19 @@ func _check_gates() -> void:
 			if player_x < 0.0:
 				army_count = mini(army_count + 10, MAX_ARMY)
 				hud_hint.text = "PORTAL +10: DEZ SOLDADOS ADICIONADOS!"
+				_spawn_pop(
+					Vector3(player_x, 3.4, -progress),
+					"+10",
+					Color(0.45, 0.85, 1.0)
+				)
 			else:
 				army_count = mini(army_count * 2, MAX_ARMY)
 				hud_hint.text = "PORTAL ×2: EXÉRCITO DUPLICADO!"
+				_spawn_pop(
+					Vector3(player_x, 3.4, -progress),
+					"×2",
+					Color(0.4, 1.0, 0.9)
+				)
 
 			_refresh_army()
 			_update_hud()
@@ -720,6 +914,9 @@ func _update_hud() -> void:
 	hud_count.text = "TROPAS: %d" % army_count
 	hud_enemy.text = "INIMIGOS: %d" % enemy_count
 
+	army_label.text = str(army_count)
+	enemy_label.text = str(enemy_count)
+
 
 func _start_battle() -> void:
 	game_state = "battle"
@@ -789,6 +986,20 @@ func _resolve_battle_round() -> void:
 	army_count = maxi(0, army_count - player_losses)
 	enemy_count = maxi(0, enemy_count - enemy_losses)
 
+	_spawn_pop(
+		army_root.position + Vector3(0.0, 3.8, 0.0),
+		"-%d" % player_losses,
+		Color(1.0, 0.35, 0.35),
+		110
+	)
+
+	_spawn_pop(
+		enemy_root.position + Vector3(0.0, 8.2, -6.5),
+		"-%d" % enemy_losses,
+		Color(1.0, 0.9, 0.3),
+		130
+	)
+
 	_refresh_army()
 	_refresh_enemy()
 	_update_hud()
@@ -846,8 +1057,7 @@ func _reset_level() -> void:
 	army_root.position = Vector3.ZERO
 	enemy_root.position = Vector3(0.0, 0.0, ENEMY_Z)
 
-	camera.position = Vector3(0.0, 10.5, 13.5)
-	camera.look_at(Vector3(0.0, 0.0, -13.0), Vector3.UP)
+	_place_camera()
 
 	result_panel.visible = false
 
