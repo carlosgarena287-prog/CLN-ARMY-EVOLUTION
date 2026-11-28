@@ -20,6 +20,8 @@ var touch_down: bool = false
 var last_pointer_x: float = 0.0
 var run_clock: float = 0.0
 var battle_timer: float = 0.0
+var battle_tick_timer: float = 0.0
+var battle_finished: bool = false
 var battle_start_player_z: float = 0.0
 var battle_start_enemy_z: float = 0.0
 
@@ -277,19 +279,8 @@ func _build_track() -> void:
 
 func _build_gates() -> void:
 	for i in range(GATE_ZS.size()):
-		_make_gate(
-			-3.0,
-			GATE_ZS[i],
-			"+10",
-			Color(0.05, 0.43, 1.0)
-		)
-
-		_make_gate(
-			3.0,
-			GATE_ZS[i],
-			"×2",
-			Color(0.0, 0.78, 0.48)
-		)
+		_make_gate(-3.0, GATE_ZS[i], "+10", Color(0.05, 0.43, 1.0))
+		_make_gate(3.0, GATE_ZS[i], "×2", Color(0.0, 0.78, 0.48))
 
 
 func _make_gate(
@@ -305,35 +296,13 @@ func _make_gate(
 	var glow := _mat(Color(tint.r, tint.g, tint.b, 0.22), 0.15, 0.25)
 	glow.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 
-	_mesh_box(
-		gate,
-		Vector3(4.8, 2.8, 0.22),
-		Vector3.ZERO,
-		glow
-	)
+	_mesh_box(gate, Vector3(4.8, 2.8, 0.22), Vector3.ZERO, glow)
 
 	var frame_material := _mat(tint, 0.35, 0.28)
 
-	_mesh_box(
-		gate,
-		Vector3(0.18, 3.0, 0.3),
-		Vector3(-2.42, 0.0, 0.0),
-		frame_material
-	)
-
-	_mesh_box(
-		gate,
-		Vector3(0.18, 3.0, 0.3),
-		Vector3(2.42, 0.0, 0.0),
-		frame_material
-	)
-
-	_mesh_box(
-		gate,
-		Vector3(4.95, 0.18, 0.3),
-		Vector3(0.0, 1.48, 0.0),
-		frame_material
-	)
+	_mesh_box(gate, Vector3(0.18, 3.0, 0.3), Vector3(-2.42, 0.0, 0.0), frame_material)
+	_mesh_box(gate, Vector3(0.18, 3.0, 0.3), Vector3(2.42, 0.0, 0.0), frame_material)
+	_mesh_box(gate, Vector3(4.95, 0.18, 0.3), Vector3(0.0, 1.48, 0.0), frame_material)
 
 	var label := Label3D.new()
 	label.text = caption
@@ -369,7 +338,6 @@ func _create_soldier(
 
 	var blue := _mat(Color(0.035, 0.24, 0.78), 0.18, 0.48)
 	var blue_light := _mat(Color(0.08, 0.48, 1.0), 0.25, 0.38)
-
 	var red := _mat(Color(0.62, 0.055, 0.075), 0.15, 0.5)
 	var red_light := _mat(Color(0.95, 0.16, 0.12), 0.18, 0.42)
 
@@ -381,11 +349,9 @@ func _create_soldier(
 
 	var torso := MeshInstance3D.new()
 	var torso_mesh := CapsuleMesh.new()
-
 	torso_mesh.radius = 0.22
 	torso_mesh.height = 0.72
 	torso_mesh.radial_segments = 12
-
 	torso.mesh = torso_mesh
 	torso.position.y = 0.98
 	torso.material_override = uniform
@@ -393,83 +359,37 @@ func _create_soldier(
 
 	var vest := MeshInstance3D.new()
 	var vest_mesh := BoxMesh.new()
-
 	vest_mesh.size = Vector3(0.39, 0.42, 0.27)
 	vest.mesh = vest_mesh
 	vest.position = Vector3(0.0, 1.0, -0.035)
 	vest.material_override = armor
-
 	unit.add_child(vest)
 
 	var head := MeshInstance3D.new()
 	var head_mesh := SphereMesh.new()
-
 	head_mesh.radius = 0.17
 	head_mesh.height = 0.34
-
 	head.mesh = head_mesh
 	head.position.y = 1.48
 	head.material_override = skin
-
 	unit.add_child(head)
 
 	var helmet := MeshInstance3D.new()
 	var helmet_mesh := SphereMesh.new()
-
 	helmet_mesh.radius = 0.19
 	helmet_mesh.height = 0.22
-
 	helmet.mesh = helmet_mesh
 	helmet.position = Vector3(0.0, 1.62, 0.0)
 	helmet.material_override = armor
-
 	unit.add_child(helmet)
 
-	var left_arm := _make_limb(
-		unit,
-		Vector3(-0.27, 1.22, 0.0),
-		uniform,
-		0.075,
-		0.48
-	)
+	var left_arm := _make_limb(unit, Vector3(-0.27, 1.22, 0.0), uniform, 0.075, 0.48)
+	var right_arm := _make_limb(unit, Vector3(0.27, 1.22, 0.0), uniform, 0.075, 0.48)
+	var left_leg := _make_limb(unit, Vector3(-0.12, 0.62, 0.0), dark, 0.09, 0.58)
+	var right_leg := _make_limb(unit, Vector3(0.12, 0.62, 0.0), dark, 0.09, 0.58)
 
-	var right_arm := _make_limb(
-		unit,
-		Vector3(0.27, 1.22, 0.0),
-		uniform,
-		0.075,
-		0.48
-	)
-
-	var left_leg := _make_limb(
-		unit,
-		Vector3(-0.12, 0.62, 0.0),
-		dark,
-		0.09,
-		0.58
-	)
-
-	var right_leg := _make_limb(
-		unit,
-		Vector3(0.12, 0.62, 0.0),
-		dark,
-		0.09,
-		0.58
-	)
-
-	_mesh_box(
-		unit,
-		Vector3(0.38, 0.09, 0.29),
-		Vector3(0.0, 0.72, 0.0),
-		dark
-	)
-
-	_mesh_box(
-		unit,
-		Vector3(0.10, 0.12, 0.025),
-		Vector3(0.0, 1.12, -0.17),
-		skin
-	)
+	_mesh_box(unit, Vector3(0.38, 0.09, 0.29), Vector3(0.0, 0.72, 0.0), dark)
+	_mesh_box(unit, Vector3(0.10, 0.12, 0.025), Vector3(0.0, 1.12, -0.17), skin)
 
 	var row: int = index / 8
 	var col: int = index % 8
@@ -505,15 +425,12 @@ func _make_limb(
 
 	var limb := MeshInstance3D.new()
 	var mesh := CapsuleMesh.new()
-
 	mesh.radius = radius
 	mesh.height = height
 	mesh.radial_segments = 8
-
 	limb.mesh = mesh
 	limb.position.y = -height * 0.36
 	limb.material_override = material
-
 	pivot.add_child(limb)
 
 	return pivot
@@ -536,11 +453,9 @@ func _set_squad_visibility(
 	for i in range(squad.size()):
 		var row: int = i / 8
 		var col: int = i % 8
-
 		var node: Node3D = squad[i]["node"]
 
 		node.visible = i < shown
-
 		node.position = Vector3(
 			(float(col) - 3.5) * 0.72,
 			0.0,
@@ -580,10 +495,8 @@ func _check_gates() -> void:
 				army_count = mini(army_count * 2, 9999)
 
 			gate_used[i] = true
-
 			_refresh_army()
 			_update_hud()
-
 			hud_hint.text = "EXÉRCITO REFORÇADO!"
 
 
@@ -604,10 +517,7 @@ func _build_hud() -> void:
 	hud_count = Label.new()
 	hud_count.position = Vector2(28.0, 72.0)
 	hud_count.add_theme_font_size_override("font_size", 40)
-	hud_count.add_theme_color_override(
-		"font_color",
-		Color(0.28, 0.72, 1.0)
-	)
+	hud_count.add_theme_color_override("font_color", Color(0.28, 0.72, 1.0))
 	root.add_child(hud_count)
 
 	progress_bar = ProgressBar.new()
@@ -620,10 +530,7 @@ func _build_hud() -> void:
 	hud_hint = Label.new()
 	hud_hint.position = Vector2(28.0, 158.0)
 	hud_hint.add_theme_font_size_override("font_size", 18)
-	hud_hint.add_theme_color_override(
-		"font_color",
-		Color(0.86, 0.92, 1.0)
-	)
+	hud_hint.add_theme_color_override("font_color", Color(0.86, 0.92, 1.0))
 	hud_hint.text = "DESLIZE PARA ESCOLHER SEU PORTAL"
 	root.add_child(hud_hint)
 
@@ -639,7 +546,6 @@ func _build_hud() -> void:
 	panel_style.border_color = Color(0.18, 0.55, 0.95)
 	panel_style.set_border_width_all(3)
 	panel_style.set_corner_radius_all(18)
-
 	result_panel.add_theme_stylebox_override("panel", panel_style)
 
 	var panel_box := VBoxContainer.new()
@@ -668,8 +574,11 @@ func _update_hud() -> void:
 
 func _start_battle() -> void:
 	game_state = "battle"
+	battle_timer = 0.0
+	battle_tick_timer = 0.0
+	battle_finished = false
 
-	hud_hint.text = "BATALHA! SEU EXÉRCITO ESTÁ EM COMBATE"
+	hud_hint.text = "BATALHA! AS TROPAS ESTÃO SE ENFRENTANDO"
 
 	army_root.position.z = -progress
 	enemy_root.position = Vector3(0.0, 0.0, ENEMY_Z)
@@ -677,43 +586,85 @@ func _start_battle() -> void:
 	_refresh_army()
 	_refresh_enemy()
 
-	battle_timer = 0.0
 	battle_start_player_z = army_root.position.z
 	battle_start_enemy_z = enemy_root.position.z
-
-	var won: bool = army_count >= enemy_count
-
-	if won:
-		result_label.text = "VITÓRIA!\nSeu exército dominou o campo."
-	else:
-		result_label.text = "DERROTA!\nReforce suas tropas e tente novamente."
-
 	result_panel.visible = false
 
 
 func _update_battle(delta: float) -> void:
+	if battle_finished:
+		return
+
 	battle_timer += delta
+	battle_tick_timer += delta
 
-	_animate_squad(soldiers, run_clock, 0.7)
-	_animate_squad(enemies, run_clock + 0.7, 0.7)
+	_animate_squad(soldiers, run_clock, 0.9)
+	_animate_squad(enemies, run_clock + 0.7, 0.9)
 
-	var t: float = minf(battle_timer / 2.8, 1.0)
+	var approach: float = minf(battle_timer / 2.2, 1.0)
 
 	army_root.position.z = lerpf(
 		battle_start_player_z,
-		battle_start_player_z - 5.5,
-		t
+		battle_start_player_z - 5.0,
+		approach
 	)
 
 	enemy_root.position.z = lerpf(
 		battle_start_enemy_z,
-		battle_start_enemy_z + 5.5,
-		t
+		battle_start_enemy_z + 5.0,
+		approach
 	)
 
-	if battle_timer >= 3.2:
-		result_panel.visible = true
-		hud_hint.text = "CONFRONTO FINALIZADO"
+	if battle_timer >= 2.2 and battle_tick_timer >= 0.7:
+		battle_tick_timer = 0.0
+		_resolve_battle_round()
+
+	if army_count <= 0 or enemy_count <= 0:
+		_finish_battle()
+	elif battle_timer >= 14.0:
+		_finish_battle()
+
+
+func _resolve_battle_round() -> void:
+	var player_power: int = maxi(army_count, 1)
+	var enemy_power: int = maxi(enemy_count, 1)
+
+	var player_losses: int = maxi(
+		1,
+		int(round(float(enemy_power) * 0.075))
+	)
+
+	var enemy_losses: int = maxi(
+		1,
+		int(round(float(player_power) * 0.105))
+	)
+
+	army_count = maxi(0, army_count - player_losses)
+	enemy_count = maxi(0, enemy_count - enemy_losses)
+
+	_refresh_army()
+	_refresh_enemy()
+	_update_hud()
+
+	hud_hint.text = "CONFRONTO  •  SUAS TROPAS: %d  |  RIVAIS: %d" % [
+		army_count,
+		enemy_count
+	]
+
+
+func _finish_battle() -> void:
+	battle_finished = true
+	game_state = "result"
+	result_panel.visible = true
+
+	if army_count > enemy_count:
+		result_label.text = "VITÓRIA!\nSeu exército venceu o confronto."
+		continue_button.visible = true
+	else:
+		result_label.text = "FIM DE JOGO\nReforce seu exército e tente novamente."
+		continue_button.visible = false
+
+	hud_hint.text = "CONFRONTO FINALIZADO"
 
 
 func _next_level() -> void:
@@ -729,15 +680,17 @@ func _next_level() -> void:
 	gate_used = [false, false, false]
 	game_state = "running"
 	battle_timer = 0.0
+	battle_tick_timer = 0.0
+	battle_finished = false
+
+	continue_button.visible = true
 
 	army_root.position = Vector3.ZERO
 	enemy_root.position = Vector3(0.0, 0.0, ENEMY_Z)
-
 	camera.position = Vector3(0.0, 10.5, 13.5)
 
 	result_panel.visible = false
 	hud_hint.text = "DESLIZE PARA ESCOLHER SEU PORTAL"
-
 	progress_bar.value = 0.0
 
 	_refresh_army()
